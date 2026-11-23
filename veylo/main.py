@@ -68,8 +68,29 @@ def make_script(item):
     )
 
 async def make_audio(script, path):
+    """Try Edge TTS first; fall back to offline eSpeak NG if the service rejects the request."""
     communicate = edge_tts.Communicate(script, VOICE, rate="+5%", volume="+0%")
-    await communicate.save(str(path))
+    try:
+        await communicate.save(str(path))
+        if path.exists() and path.stat().st_size > 1000:
+            print("Audio generated with Edge TTS")
+            return
+        raise RuntimeError("Edge TTS returned an empty audio file")
+    except Exception as exc:
+        print("Edge TTS failed; switching to offline eSpeak NG:", repr(exc))
+        wav_path = path.with_suffix(".wav")
+        subprocess.run(
+            ["espeak-ng", "-v", "en-us", "-s", "155", "-w", str(wav_path), script],
+            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", str(wav_path), "-codec:a", "libmp3lame", "-q:a", "4", str(path)],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+        )
+        wav_path.unlink(missing_ok=True)
+        if not path.exists() or path.stat().st_size < 1000:
+            raise RuntimeError("Offline eSpeak NG audio generation failed")
+        print("Audio generated with offline eSpeak NG")
 
 def commons_image(query, path):
     api = "https://commons.wikimedia.org/w/api.php"
