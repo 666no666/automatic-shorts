@@ -1,0 +1,51 @@
+name: VEYLO Daily Shorts
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 14 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore state
+        uses: actions/cache@v4
+        with:
+          path: state/used.json
+          key: veylo-state-${{ github.run_id }}
+          restore-keys: veylo-state-
+
+      - name: Generate video
+        env:
+          PUBLISH_TO_YOUTUBE: "false"
+        run: python -m veylo.main
+
+      - name: Upload video
+        uses: actions/upload-artifact@v4
+        with:
+          name: veylo-short-${{ github.run_number }}
+          path: output/
+          if-no-files-found: error
+          retention-days: 14
